@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Home | PhotoStorage</title>
+    <link rel="stylesheet" href="css/main.css" />
+  </head>
+  <body>
+    <header class="navbar">
+      <div class="logo">
+        <a href="#">PhotoStorage</a>
+      </div>
+      <nav class="nav-links">
+        <div class="avatar-container">
+          <div class="avatar" id="userAvatar" onclick="toggleDropdown()">
+            AS
+          </div>
+          <div class="dropdown-menu" id="dropdownMenu">
+            <a href="profile.html">My Profile</a>
+            <a href="index.html">Logout</a>
+          </div>
+        </div>
+        <a href="dashboard.html" class="dashboard-btn">Dashboard</a>
+      </nav>
+    </header>
+    <main class="container">
+      <h1>Welcome Back!</h1>
+      <div class="main-content">
+        <section class="file-structure">
+          <h2>Your Uploaded Files</h2>
+          <div id="fileTree">
+            <!-- Folder structure will be dynamically rendered here -->
+          </div>
+        </section>
+        <section class="file-upload">
+          <h2>Upload Files or Folders</h2>
+          <div class="upload-zone" id="uploadZone">
+            <p>Drag & Drop files or folders here</p>
+            <input type="file" id="fileInput" multiple webkitdirectory />
+          </div>
+          <button class="btn upload-btn" id="uploadButton">Upload</button>
+        </section>
+      </div>
+    </main>
+    <footer class="footer">
+      © 2024 Photo Storage App. All rights reserved.
+    </footer>
+    <script src="js/home.js"></script>
+  </body>
+</html>
