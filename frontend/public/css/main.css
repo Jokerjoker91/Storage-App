@@ -88,7 +88,6 @@ main {
 /* Responsive Styles */
 @media (max-width: 768px) {
   .nav-links {
-    display: none;
     flex-direction: column;
     background: #333;
     position: absolute;
