@@ -8,7 +8,7 @@ import (
 	"net/http"
 	"strings"
 
-	"storage-app/handlers/signer"
+	"github.com/Jokerjoker91/Storage-App/handlers/signer"
 )
 
 type ListBucketResult struct {

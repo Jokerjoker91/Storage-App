@@ -5,7 +5,3 @@ const navLinks = document.getElementById("nav-links");
 hamburger.addEventListener("click", () => {
   navLinks.classList.toggle("show");
 });
-
-document.querySelector(".oauth-google").addEventListener("click", () => {
-  alert("Google OAuth login will be implemented soon!");
-});

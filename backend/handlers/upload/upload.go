@@ -1,149 +1,101 @@
 package upload
 
 import (
-	"bytes"
-	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
-	"sync"
 
-	"github.com/aws/aws-sdk-go-v2/aws"
-	"github.com/aws/aws-sdk-go-v2/config"
-	"github.com/aws/aws-sdk-go-v2/credentials"
-	"github.com/aws/aws-sdk-go-v2/service/s3"
-	"github.com/joho/godotenv"
+	"github.com/Jokerjoker91/Storage-App/handlers/signer"
 )
 
-type FileDetails struct {
+// Struct to represent the file data received from the frontend
+type FileData struct {
 	Name string `json:"name"`
 	Path string `json:"path"`
 }
 
-type UploadRequest struct {
-	Files []FileDetails `json:"files"`
+func jsonErrorResponse(w http.ResponseWriter, statusCode int, message string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(statusCode)
+	json.NewEncoder(w).Encode(map[string]string{"error": message})
 }
 
-func init() {
-    if err := godotenv.Load(); err != nil {
-        log.Println("No .env file found")
-    }
-}
-
-// Function to upload files to Scaleway S3 Glacier
-func uploadToS3(bucketName, filePath, fileName string, fileContent []byte) error {
-	// Scaleway S3 endpoint
-	endpoint := "https://long-term-strg-app.s3.fr-par.scw.cloud"
-
-	// Scaleway access credentials (replace with secure method in production)
-	accessKey := os.Getenv("SCW_ACCESS_KEY")
-	secretKey := os.Getenv("SCW_SECRET_KEY")
-
-	if accessKey == "" || secretKey == "" {
-		return fmt.Errorf("missing Scaleway credentials")
+// Handler to upload files to Scaleway bucket
+func UploadFilesToBucket(w http.ResponseWriter, r *http.Request) {
+	// Parse incoming JSON data (files list)
+	var requestBody struct {
+		Files []FileData `json:"files"`
 	}
 
-	// Create AWS SDK config for Scaleway S3
-	customResolver := aws.EndpointResolverWithOptionsFunc(func(service, region string, options ...interface{}) (aws.Endpoint, error) {
-		return aws.Endpoint{
-			PartitionID:   "scw",
-			URL:           endpoint,
-			SigningRegion: "fr-par",
-		}, nil
-	})
-
-	cfg, err := config.LoadDefaultConfig(context.TODO(),
-		config.WithRegion("fr-par"),
-		config.WithCredentialsProvider(credentials.NewStaticCredentialsProvider(accessKey, secretKey, "")),
-		config.WithEndpointResolverWithOptions(customResolver),
-	)
-	if err != nil {
-		return fmt.Errorf("unable to load SDK config: %v", err)
-	}
-
-	// Create S3 client
-	s3Client := s3.NewFromConfig(cfg)
-
-	// Set the object key (simulating folder structure)
-	objectKey := "Test folder/" + filePath + "/" + fileName
-
-	// Upload object to Scaleway S3
-	_, err = s3Client.PutObject(context.TODO(), &s3.PutObjectInput{
-		Bucket:       aws.String(bucketName),
-		Key:          aws.String(objectKey),
-		Body:         bytes.NewReader(fileContent),
-		StorageClass: "DEEP_ARCHIVE", // Glacier equivalent for Scaleway
-	})
-
-	return err
-}
-
-// UploadFolderHandler handles file uploads
-func UploadFolderHandler(w http.ResponseWriter, r *http.Request) {
-
-    // Enable CORS headers
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-    w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
-
-    // Handle preflight OPTIONS request
-    if r.Method == http.MethodOptions {
-        w.WriteHeader(http.StatusOK)
-        return
-    }
-
-	var req UploadRequest
-	decoder := json.NewDecoder(r.Body)
-	err := decoder.Decode(&req)
-	if err != nil {
-		http.Error(w, "Invalid input", http.StatusBadRequest)
+	// Decode the incoming JSON request body
+	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
+		jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse request body: %v", err))
 		return
 	}
 
-	// Upload each file concurrently
-	var wg sync.WaitGroup
-	for _, file := range req.Files {
-		wg.Add(1)
-		go func(file FileDetails) {
-			defer wg.Done()
+	// Iterate over the file list and upload each file
+	for _, fileData := range requestBody.Files {
+		// Open the file
+		file, err := os.Open(fileData.Path)
+		if err != nil {
+			jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to open file: %v", err))
+			return
+		}
+		defer file.Close()
 
-			// Read file content
-			fileContent, err := os.ReadFile(file.Name)
-			if err != nil {
-				fmt.Printf("Error reading file %s: %v\n", file.Name, err)
-				return
-			}
+		// Get file stats (including size)
+		fileInfo, err := file.Stat()
+		if err != nil {
+			jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get file info: %v", err))
+			return
+		}
 
-			// Upload file to S3 (Scaleway)
-			err = uploadToS3("long-term-strg-app", file.Path, file.Name, fileContent)
-			if err != nil {
-				fmt.Printf("Error uploading %s: %v\n", file.Name, err)
-			} else {
-				fmt.Printf("Successfully uploaded %s\n", file.Name)
-			}
-		}(file)
+		// URL for the Scaleway object storage
+		bucketURL := "https://long-term-strg-app.s3.fr-par.scw.cloud"
+
+		// Prepare the file path (uploading to root folder in the bucket)
+		filePath := fmt.Sprintf("/storage/%s", fileData.Name)
+
+		// Create a signed request to Scaleway
+		request, err := signer.CreateSignedRequest("PUT", bucketURL+filePath, "fr-par")
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error creating signed request: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Set the file content in the PUT request
+		request.Body = io.NopCloser(file) // Attach file to the request body
+		request.ContentLength = fileInfo.Size() // Set file size
+
+		log.Printf("Uploading file: %s to path: %s\n", fileData.Name, filePath)
+		log.Printf("Request Headers: %v\n", request.Header)
+
+		// Make the actual PUT request to Scaleway
+		client := &http.Client{}
+		resp, err := client.Do(request)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Error uploading file to Scaleway: %v", err), http.StatusInternalServerError)
+			return
+		}
+		defer resp.Body.Close()
+
+		// Check the response status
+		if resp.StatusCode != http.StatusOK {
+			http.Error(w, fmt.Sprintf("Failed to upload file: %v", resp.Status), http.StatusInternalServerError)
+			return
+		}
+
+		log.Printf("File %s uploaded successfully", fileData.Name)
 	}
 
-	wg.Wait()
-
-    // Create a response struct
-    response := map[string]interface{}{
-        "success": true,
-        "message": "Folder uploaded successfully",
-    }
-
-    // Set content type to JSON
-    w.Header().Set("Content-Type", "application/json")
-
-    // Write the response as JSON
-    jsonResponse, err := json.Marshal(response)
-    if err != nil {
-        http.Error(w, "Error creating JSON response", http.StatusInternalServerError)
-        return
-    }
-
-    // Send the response
-    w.Write(jsonResponse)
+	// Respond back with success message
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "Files uploaded successfully",
+	})
 }

@@ -5,33 +5,42 @@ import (
 	"net/http"
 	"os"
 
-	"storage-app/handlers/getlist"
-	"storage-app/handlers/login"
-	"storage-app/handlers/upload"
+	"github.com/Jokerjoker91/Storage-App/handlers/auth"
+	"github.com/Jokerjoker91/Storage-App/handlers/getlist"
+	"github.com/Jokerjoker91/Storage-App/handlers/login"
+	"github.com/Jokerjoker91/Storage-App/handlers/upload"
 
 	"github.com/rs/cors"
 )
 
 
 func main() {
+	// Initialize authentication and login
+	auth.InitializeAuth()
+	login.InitializeLogin()
 
-	// Load allowed users from .env
-	login.LoadAllowedUsersFromEnv()
-	
+	// Main multiplexer
 	mux := http.NewServeMux()
 
-	// Serve static files
-	fileServer := http.FileServer(http.Dir("../frontend/public")) // Adjust the folder path if needed
-	mux.Handle("/", fileServer)
+	// Serve all static files from the "public" directory
+	fs := http.FileServer(http.Dir("../frontend/public"))
+	mux.Handle("/", fs) // Serve index.html and other static files by default
 
-	// Handle login route
+	// Public route for login
 	mux.HandleFunc("/login", login.LoginHandler)
 
-	// Handle the upload folder route
-	mux.HandleFunc("/upload-folder", upload.UploadFolderHandler)
+	// Sub-mux for protected routes
+	protectedMux := http.NewServeMux()
+	protectedMux.HandleFunc("/api/upload-folder", upload.UploadFilesToBucket)
+	protectedMux.HandleFunc("/api/get-bucket-contents", getlist.GetBucketContentsHandler)
+	
+	// Protect the home.html page with AuthMiddleware
+	mux.Handle("/home.html", auth.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.ServeFile(w, r, "../frontend/public/home.html")
+	})))
 
-	// Bucket contents route
-	mux.HandleFunc("/api/get-bucket-contents", getlist.GetBucketContentsHandler)
+	// Combine protected routes under AuthMiddleware
+	mux.Handle("/api/", auth.AuthMiddleware(protectedMux))
 
 	// Configure CORS
 	c := cors.New(cors.Options{
@@ -44,6 +53,7 @@ func main() {
 	// Wrap the router with the CORS middleware
 	handler := c.Handler(mux)
 
+	// Determine port
 	port := os.Getenv("PORT")
     if port == "" {
         port = "8080" // Default port for local development
@@ -52,5 +62,5 @@ func main() {
 	log.Printf("Server starting on port %s...\n", port)
 
 	// Start the server
-	http.ListenAndServe("localhost:"+port, handler)
+	log.Fatal(http.ListenAndServe("localhost:"+port, handler))
 }

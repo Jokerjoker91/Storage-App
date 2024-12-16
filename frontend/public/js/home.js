@@ -1,3 +1,15 @@
+// Retrieve the JWT token from localStorage
+function getToken() {
+  const token = localStorage.getItem("jwtToken");
+  console.log(token);
+  if (!token) {
+    alert("Unauthorized: Please log in.");
+    //window.location.href = "/login.html"; // Redirect to login page
+    return null;
+  }
+  return token;
+}
+
 // Simulate file upload and folder structure rendering
 document.getElementById("uploadButton").addEventListener("click", () => {
   const files = document.getElementById("fileInput").files;
@@ -21,10 +33,12 @@ document.getElementById("uploadButton").addEventListener("click", () => {
 
 // Function to upload files to the backend
 function uploadFilesToBackend(fileList) {
-  fetch("http://localhost:8080/upload-folder", {
+  var token = getToken();
+  fetch("/api/upload-folder", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
     },
     body: JSON.stringify({
       files: fileList.map((item) => ({
@@ -33,8 +47,16 @@ function uploadFilesToBackend(fileList) {
       })),
     }),
   })
-    .then((response) => response.json()) // Ensure it's treated as JSON
+    .then((response) => {
+      if (response.status === 401) {
+        alert("Unauthorized: Please log in.");
+        //window.location.href = "/login.html"; // Redirect on unauthorized
+        return;
+      }
+      return response.json();
+    }) // Ensure it's treated as JSON
     .then((data) => {
+      console.log("Response JSON:", data);
       if (data.success) {
         alert(data.message); // Display success message
       } else {
@@ -76,8 +98,17 @@ async function renderFileTree() {
   const fileTree = document.getElementById("fileTree");
 
   try {
-    const response = await fetch("/api/get-bucket-contents");
+    var token = getToken();
+    const response = await fetch("/api/get-bucket-contents", {
+      headers: {
+        Authorization: `Bearer ${token}`, // Include JWT token
+      },
+    });
     if (!response.ok) {
+      if (response.status === 401) {
+        alert("Unauthorized: Please log in.");
+        //window.location.href = "/login.html"; // Redirect on unauthorized
+      }
       throw new Error("Failed to fetch folder structure");
     }
 
@@ -93,7 +124,7 @@ async function renderFileTree() {
 }
 
 // Call the function to render the file tree
-renderFileTree();
+document.addEventListener("DOMContentLoaded", renderFileTree);
 
 // Drag-and-Drop Handling
 const uploadZone = document.getElementById("uploadZone");
