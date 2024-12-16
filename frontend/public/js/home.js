@@ -4,7 +4,7 @@ function getToken() {
   console.log(token);
   if (!token) {
     alert("Unauthorized: Please log in.");
-    //window.location.href = "/login.html"; // Redirect to login page
+    window.location.href = "./login.html"; // Redirect to login page
     return null;
   }
   return token;

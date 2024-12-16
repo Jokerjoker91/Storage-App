@@ -27,7 +27,7 @@ func main() {
 	mux.Handle("/", fs) // Serve index.html and other static files by default
 
 	// Public route for login
-	mux.HandleFunc("/login", login.LoginHandler)
+	mux.HandleFunc("/api/login", login.LoginHandler)
 
 	// Sub-mux for protected routes
 	protectedMux := http.NewServeMux()
@@ -35,9 +35,9 @@ func main() {
 	protectedMux.HandleFunc("/api/get-bucket-contents", getlist.GetBucketContentsHandler)
 	
 	// Protect the home.html page with AuthMiddleware
-	mux.Handle("/home.html", auth.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, "../frontend/public/home.html")
-	})))
+	// mux.Handle("/home.html", auth.AuthMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// 	http.ServeFile(w, r, "../frontend/public/home.html")
+	// })))
 
 	// Combine protected routes under AuthMiddleware
 	mux.Handle("/api/", auth.AuthMiddleware(protectedMux))

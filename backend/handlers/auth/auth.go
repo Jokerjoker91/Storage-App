@@ -54,7 +54,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Get the Authorization header
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" {
-			http.Error(w, "Missing Authorization header", http.StatusUnauthorized)
+			http.Error(w, fmt.Sprintf("Missing Authorization header: %s", authHeader), http.StatusUnauthorized)
 			return
 		}
 
