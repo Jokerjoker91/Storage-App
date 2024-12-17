@@ -68,9 +68,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 
 		// Parse and validate the token with claims
 		claims := jwt.MapClaims{}
-		log.Printf("Received token: %s\n", tokenString)
 		_, err := jwt.ParseWithClaims(tokenString, claims, func(token *jwt.Token) (interface{}, error) {
-			log.Printf("Token method: %v\n", token.Method)
 			// Ensure the signing method is HMAC
 			if _, ok := token.Method.(*jwt.SigningMethodHMAC); !ok {
 				return nil, fmt.Errorf("unexpected signing method: %v", token.Header["alg"])
@@ -99,9 +97,6 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				return
 			}
 		}
-
-		// Log the authenticated user
-		log.Printf("Authenticated user: %s\n", email)
 
 		// Pass request to the next handler
 		next.ServeHTTP(w, r)

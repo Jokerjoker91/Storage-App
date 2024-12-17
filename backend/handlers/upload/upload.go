@@ -3,10 +3,8 @@ package upload
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
-	"os"
 
 	"github.com/Jokerjoker91/Storage-App/handlers/signer"
 )
@@ -25,77 +23,66 @@ func jsonErrorResponse(w http.ResponseWriter, statusCode int, message string) {
 
 // Handler to upload files to Scaleway bucket
 func UploadFilesToBucket(w http.ResponseWriter, r *http.Request) {
-	// Parse incoming JSON data (files list)
-	var requestBody struct {
-		Files []FileData `json:"files"`
-	}
+	// Parse the multipart form data
+    err := r.ParseMultipartForm(100 << 20) // Limit file size to 10MB (adjust as needed)
+    if err != nil {
+        jsonErrorResponse(w, http.StatusBadRequest, "Unable to parse form data")
+        return
+    }
 
-	// Decode the incoming JSON request body
-	if err := json.NewDecoder(r.Body).Decode(&requestBody); err != nil {
-		jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to parse request body: %v", err))
-		return
-	}
+    // Retrieve the files from the request
+    files := r.MultipartForm.File["files"]
+    if len(files) == 0 {
+        jsonErrorResponse(w, http.StatusBadRequest, "No files provided")
+        return
+    }
 
-	// Iterate over the file list and upload each file
-	for _, fileData := range requestBody.Files {
-		// Open the file
-		file, err := os.Open(fileData.Path)
-		if err != nil {
-			jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to open file: %v", err))
-			return
-		}
-		defer file.Close()
+    // Scaleway bucket URL
+    bucketURL := "https://long-term-strg-app.s3.fr-par.scw.cloud"
 
-		// Get file stats (including size)
-		fileInfo, err := file.Stat()
-		if err != nil {
-			jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to get file info: %v", err))
-			return
-		}
+    for _, fileHeader := range files {
+        // Open the uploaded file
+        file, err := fileHeader.Open()
+        if err != nil {
+            jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Failed to open uploaded file: %v", err))
+            return
+        }
+        defer file.Close()
 
-		// URL for the Scaleway object storage
-		bucketURL := "https://long-term-strg-app.s3.fr-par.scw.cloud"
+        // Prepare the upload path (use fileHeader.Filename for the name)
+        filePath := fmt.Sprintf("/storage/%s", fileHeader.Filename)
 
-		// Prepare the file path (uploading to root folder in the bucket)
-		filePath := fmt.Sprintf("/storage/%s", fileData.Name)
+        // Create a signed PUT request
+        request, err := signer.CreateSignedRequest("PUT", bucketURL+filePath, "fr-par")
+        if err != nil {
+            jsonErrorResponse(w, http.StatusInternalServerError, fmt.Sprintf("Error creating signed request: %v", err))
+            return
+        }
 
-		// Create a signed request to Scaleway
-		request, err := signer.CreateSignedRequest("PUT", bucketURL+filePath, "fr-par")
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error creating signed request: %v", err), http.StatusInternalServerError)
-			return
-		}
+        // Attach file content to the request
+        request.Body = file
+        request.ContentLength = fileHeader.Size
 
-		// Set the file content in the PUT request
-		request.Body = io.NopCloser(file) // Attach file to the request body
-		request.ContentLength = fileInfo.Size() // Set file size
+        log.Printf("Uploading file: %s to path: %s\n", fileHeader.Filename, filePath)
 
-		log.Printf("Uploading file: %s to path: %s\n", fileData.Name, filePath)
-		log.Printf("Request Headers: %v\n", request.Header)
+        // Perform the PUT request
+        client := &http.Client{}
+        resp, err := client.Do(request)
+        if err != nil || resp.StatusCode != http.StatusOK {
+            log.Printf("Upload failed for file %s, status: %v\n", fileHeader.Filename, resp.Status)
+            http.Error(w, fmt.Sprintf("Failed to upload file: %v", err), http.StatusInternalServerError)
+            return
+        }
+        defer resp.Body.Close()
 
-		// Make the actual PUT request to Scaleway
-		client := &http.Client{}
-		resp, err := client.Do(request)
-		if err != nil {
-			http.Error(w, fmt.Sprintf("Error uploading file to Scaleway: %v", err), http.StatusInternalServerError)
-			return
-		}
-		defer resp.Body.Close()
+        log.Printf("File %s uploaded successfully", fileHeader.Filename)
+    }
 
-		// Check the response status
-		if resp.StatusCode != http.StatusOK {
-			http.Error(w, fmt.Sprintf("Failed to upload file: %v", resp.Status), http.StatusInternalServerError)
-			return
-		}
-
-		log.Printf("File %s uploaded successfully", fileData.Name)
-	}
-
-	// Respond back with success message
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": "Files uploaded successfully",
-	})
+    // Respond with success
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(http.StatusOK)
+    json.NewEncoder(w).Encode(map[string]interface{}{
+        "success": true,
+        "message": "Files uploaded successfully",
+    })
 }

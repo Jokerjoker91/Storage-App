@@ -33,19 +33,20 @@ document.getElementById("uploadButton").addEventListener("click", () => {
 
 // Function to upload files to the backend
 function uploadFilesToBackend(fileList) {
+  const formData = new FormData();
+
+  // Append files to the FormData object
+  for (const fileData of fileList) {
+    formData.append("files", fileData.file, fileData.path); // Include path as the name
+  }
+
   var token = getToken();
   fetch("/api/upload-folder", {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
       Authorization: `Bearer ${token}`,
     },
-    body: JSON.stringify({
-      files: fileList.map((item) => ({
-        name: item.name,
-        path: item.path,
-      })),
-    }),
+    body: formData,
   })
     .then((response) => {
       if (response.status === 401) {
