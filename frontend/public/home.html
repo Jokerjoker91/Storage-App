@@ -36,8 +36,13 @@
         <section class="file-upload">
           <h2>Upload Files or Folders</h2>
           <div class="upload-zone" id="uploadZone">
+            <label for="folderSelect">Select a Folder:</label>
+            <select id="folderSelect">
+              <option value="Root">Root</option>
+              <!-- Default -->
+            </select>
             <p>Drag & Drop files or folders here</p>
-            <input type="file" id="fileInput" multiple webkitdirectory />
+            <input type="file" id="fileInput" multiple />
           </div>
           <button class="btn upload-btn" id="uploadButton">Upload</button>
         </section>
@@ -46,6 +51,9 @@
     <footer class="footer">
       © 2024 Photo Storage App. All rights reserved.
     </footer>
-    <script src="js/home.js"></script>
+    <script type="module" src="js/home.js"></script>
+    <script type="module" src="js/upload.js"></script>
+    <script type="module" src="js/renderTree.js"></script>
+    <script type="module" src="js/utils.js"></script>
   </body>
 </html>
